@@ -1,0 +1,291 @@
+# Databricks notebook source exported at Wed, 14 Sep 2016 21:51:52 UTC
+# MAGIC %md ## Analysis of Reddit Comments
+# MAGIC I pulled the Dataset from [Reddit's Archive Site](https://archive.org/details/2015_reddit_comments_corpus), which contains a "_Complete Public Reddit Comments Corpus_".  
+# MAGIC I'll attempt to bring the dataset into my environment, perform an ETL on the dataset, and run LDA on it to determine the topics of them.
+
+# COMMAND ----------
+
+# MAGIC %sh
+# MAGIC ls -lh /databricks/driver
+
+# COMMAND ----------
+
+# MAGIC %sh
+# MAGIC cp /databricks/driver/hn_comments.json /dbfs/mnt/mwc/
+
+# COMMAND ----------
+
+# MAGIC %md ## Read Reddit Parquet Data For Analysis
+# MAGIC We've pulled the dataset into an S3 bucket to allow Spark to process it further.  
+# MAGIC * **Input**: json + bzip2 compression (50,687,364,160 = 50.5GB)
+# MAGIC * **Output**: Parquet + gzip (52,395,455,189 = 52.3GB)
+
+# COMMAND ----------
+
+# List partitions and register as temp tables
+import pyspark.sql.functions as F
+from pyspark.sql.types import *
+# To create the complete dataset, let's create temporary tables per year then find create a master union table
+df = spark.parallelize(dbutils.fs.ls("/mnt/mwc/reddit_year")).toDF()
+
+# Parse the year partition to get an array of years to register the tables by
+years = df.select(F.regexp_extract('name', '(\d+)', 1).alias('year')).collect()
+year_partitions = [x.asDict().values()[0] for x in years if x.asDict().values()[0]]
+year_partitions
+
+# Loop over and register a table per year 
+for y in year_partitions:
+  df = spark.read.parquet("/mnt/mwc/reddit_year/year=%s" % y)
+  df.createOrReplaceTempView("reddit_%s" % y)
+
+# Register the root directory for the complete dataset 
+df_complete = spark.read.parquet("/mnt/mwc/reddit_year/")
+df_complete.createOrReplaceTempView("reddit_all")
+
+# COMMAND ----------
+
+display(df_complete)
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC select count(1) as count, year from reddit_all group by year; 
+
+# COMMAND ----------
+
+# MAGIC %md ### Total Number of Comments posted per day of week in 2012
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC --- Find the number of comments per day of week for 2012
+# MAGIC SELECT day, sum(comments) as counts from (
+# MAGIC   SELECT date_format(from_unixtime(created_utc), 'EEEE') day, COUNT(*) comments
+# MAGIC   FROM reddit_2015
+# MAGIC   GROUP BY created_utc
+# MAGIC   ORDER BY created_utc
+# MAGIC ) q2
+# MAGIC GROUP BY day 
+# MAGIC ORDER BY counts; 
+
+# COMMAND ----------
+
+# MAGIC %md ## Best Time to Comment on Posts in 2015  
+# MAGIC 
+# MAGIC We generated a temporary table called `popular_posts_2015` using the following SQL cell:  
+# MAGIC ```
+# MAGIC %sql
+# MAGIC -- Select best time to comment on posts 
+# MAGIC CREATE TEMPORARY TABLE popular_posts_2015
+# MAGIC   USING parquet 
+# MAGIC   OPTIONS (
+# MAGIC     path "/mnt/mwc/popular_posts_2015"
+# MAGIC   ) 
+# MAGIC AS SELECT 
+# MAGIC   day,
+# MAGIC   hour,
+# MAGIC   SUM(IF(score >= 1000, 1, 0)) as score_gt_1k
+# MAGIC FROM
+# MAGIC   (SELECT 
+# MAGIC     date_format(from_utc_timestamp(from_unixtime(created_utc), "PST"), 'EEEE') as day, 
+# MAGIC     date_format(from_utc_timestamp(from_unixtime(created_utc), "PST"), 'h a') as hour,
+# MAGIC     score
+# MAGIC   FROM reddit_2015) q1
+# MAGIC GROUP BY day, hour
+# MAGIC ORDER BY day, hour
+# MAGIC ```
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC --- READ TEMP TABLE
+# MAGIC CREATE TEMPORARY TABLE popular_posts_2015
+# MAGIC   USING parquet 
+# MAGIC   OPTIONS (
+# MAGIC     path "/mnt/mwc/popular_posts_2015"
+# MAGIC   ) 
+
+# COMMAND ----------
+
+current_table = 'popular_posts_2015'
+display(table(current_table))
+
+# COMMAND ----------
+
+# MAGIC %md ### Matplotlib Visualization
+
+# COMMAND ----------
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
+# COMMAND ----------
+
+# Define the labels sorted in my predefined order
+column_labels = ["12 AM", "1 AM", "2 AM", "3 AM", "4 AM", "5 AM", "6 AM", "7 AM", "8 AM", "9 AM", "10 AM", "11 AM", "12 PM", "1 PM", "2 PM", "3 PM", "4 PM", "5 PM", "6 PM", "7 PM", "8 PM", "9 PM", "10 PM", "11 PM"]
+
+# Zip up the 2 column names by predefined order
+column2_name = ['Count of Comments > 1K Votes']*len(column_labels)
+column_label_sorted = zip(column2_name, column_labels)
+
+# Define the row labels to map the calendar week
+row_labels = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+
+data = [[x.day, x.hour, x.score_gt_1k] for x in table(current_table).collect()]
+
+# COMMAND ----------
+
+# Create the Pivot Table
+colNames = ['Day of Week', 'Hour', 'Count of Comments > 1K Votes']
+data_m = pd.DataFrame(data,columns = colNames)
+pvt = pd.pivot_table(data_m, index=['Day of Week'], columns=['Hour'])
+
+# COMMAND ----------
+
+# Call reindex_axis to sort the row axis by my order array
+# Call reindex_axis on axis=1 (columns) to sort columns by my ordered zipped array
+pvt_sorted = pvt.reindex_axis(row_labels, axis=0).reindex_axis(column_label_sorted, axis=1)
+pvt_sorted 
+
+# COMMAND ----------
+
+data_p = pvt_sorted.as_matrix().transpose()
+fig, ax = plt.subplots()
+heatmap = ax.pcolor(data_p, cmap=plt.cm.Blues)
+
+# put the major ticks at the middle of each cell
+ax.set_xticks(np.arange(data_p.shape[1])+0.5, minor=False)
+ax.set_yticks(np.arange(data_p.shape[0])+0.5, minor=False)
+
+# want a more natural, table-like display
+ax.invert_yaxis()
+ax.xaxis.tick_top()
+
+ax.set_xticklabels(row_labels, minor=False)
+ax.set_yticklabels(column_labels, minor=False)
+display()
+
+# COMMAND ----------
+
+# MAGIC %md ### R Visualizations
+
+# COMMAND ----------
+
+# MAGIC %r
+# MAGIC # Install necessary packages to use ggplot2 
+# MAGIC install.packages("ggplot2")
+# MAGIC install.packages("reshape")
+# MAGIC library(plyr)
+# MAGIC library(reshape2)
+# MAGIC library(scales)
+# MAGIC library(ggplot2)
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC select * from popular_posts_2015 limit 5
+
+# COMMAND ----------
+
+# MAGIC %r
+# MAGIC scores <- tableToDF("popular_posts_2015")
+# MAGIC local_df <- collect(scores)
+# MAGIC 
+# MAGIC # We can pivot the data in 2 ways, option 1 commented out
+# MAGIC # local_df$day <- factor(local_df$day)
+# MAGIC # xtabs(score_gt_2k ~ hour+day, local_df)
+# MAGIC 
+# MAGIC heat_val <- with(local_df, tapply(score_gt_1k, list(hour, day) , I)  )
+# MAGIC # Define logical times
+# MAGIC times <- c("12 AM", "1 AM", "2 AM", "3 AM", "4 AM", "5 AM", "6 AM", "7 AM", "8 AM", "9 AM", "10 AM", "11 AM", "12 PM", "1 PM", "2 PM", "3 PM", "4 PM", "5 PM", "6 PM", "7 PM", "8 PM", "9 PM", "10 PM", "11 PM")
+# MAGIC heat_val[times, ]
+
+# COMMAND ----------
+
+# MAGIC %r
+# MAGIC # Testing out the factor api, which doesn't do much until you use ggplot 
+# MAGIC local_df.m <- melt(local_df)
+# MAGIC local_df.m$hour <- factor(local_df.m$hour, levels=times)
+# MAGIC local_df.m
+
+# COMMAND ----------
+
+# MAGIC %r
+# MAGIC library(scales)
+# MAGIC # Melt flattens the R.DataFrame into a friendly format for ggplot
+# MAGIC local_df.m <- melt(local_df)
+# MAGIC # factor() allows you to specify the exact ordering for the values within a column! This is extremely important since these values have no machine readable sort order. 
+# MAGIC local_df.m$hour <- factor(local_df.m$hour, levels=rev(times))
+# MAGIC local_df.m$day <- factor(local_df.m$day, levels=c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"))
+# MAGIC 
+# MAGIC # This provides the heatmap of the comment posts
+# MAGIC p <- ggplot(local_df.m, aes(day, hour)) + geom_tile(aes(fill = value), colour = "white") + scale_fill_gradient(low = "white", high = "steelblue")
+# MAGIC p
+
+# COMMAND ----------
+
+# MAGIC %md #### Scan Comment Text
+# MAGIC Since we've ran an ETL job on the dataset, providing filters on the query such as the subreddit will efficiently prune the columns. We can run the `explain plan` below to see how the plan is generated.
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC select author, body from reddit_2015 where subreddit = "AMA" and body like "%Donald Trump%"
+
+# COMMAND ----------
+
+# MAGIC %md #### Look at the Average Length of Comments vs Comment Score
+
+# COMMAND ----------
+
+df = table("reddit_2010").unionAll(table("reddit_2011")).unionAll(table("reddit_2012"))
+df.createOrReplaceTempView("reddit_201x")
+
+# COMMAND ----------
+
+dfc = spark.sql("""SELECT
+  score,
+  AVG(LENGTH(body)) as avg_comment_length,
+  STDDEV(LENGTH(body))/SQRT(COUNT(score)) as se_comment_length,
+  COUNT(score) as num_comments
+ FROM reddit_201x
+ GROUP BY score
+ ORDER BY score""") 
+
+df = dfc.filter("score >= -200 and score <=2000").select("score", "avg_comment_length", "se_comment_length").toPandas()
+
+
+# COMMAND ----------
+
+from ggplot import *
+
+p = ggplot(df, aes(x='score', y='avg_comment_length')) + \
+    geom_line(size=0.25, color='red') + \
+    ylim(0, 1100) + \
+    xlim(-200, 2000) + \
+    xlab("(# Upvotes - # Downvotes)") + \
+    ylab("Avg. Length of Comment For Each Score") + \
+    ggtitle("Relationship between Reddit Comment Score and Comment Length for Comments")
+    
+display(p)
+
+# COMMAND ----------
+
+# MAGIC %md ### Find the Most Active Community in SubReddits
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SELECT subreddit, num_comments 
+# MAGIC   FROM (
+# MAGIC     SELECT count(*) as num_comments, 
+# MAGIC           subreddit 
+# MAGIC     FROM reddit_2015 
+# MAGIC     GROUP BY subreddit
+# MAGIC     ORDER BY num_comments DESC
+# MAGIC     LIMIT 20
+# MAGIC   ) t1 
+
+# COMMAND ----------
+
