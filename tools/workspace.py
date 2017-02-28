@@ -12,6 +12,16 @@ WS_STATUS = "/workspace/get-status"
 WS_MKDIRS = "/workspace/mkdirs"
 WS_IMPORT = "/workspace/import"
 WS_EXPORT = "/workspace/export"
+LS_ZONES = "/clusters/list-zones"
+
+error_401 = """
+Credentials are incorrect. Please verify the credentials passed into the APIs.
+If using SSO, log out of the Databricks environment.
+1. Click on the Admin login page
+2. Enter your e-mail
+3. Click 'Forgot my Password'
+This will create a new password for you to use against the REST API. This should **not** be your SSO password
+"""
 
 
 class WorkspaceClient:
@@ -28,9 +38,13 @@ class WorkspaceClient:
     def get(self, endpoint, json_params={}, print_json=False):
         url = self.url + endpoint
         if json_params:
-            results = requests.get(url, auth=self.creds, params=json_params).json()
+            raw_results = requests.get(url, auth=self.creds, params=json_params)
         else:
-            results = requests.get(url, auth=self.creds).json()
+            raw_results = requests.get(url, auth=self.creds)
+        if raw_results.status_code == 401:
+            print(error_401)
+            raise ValueError("Unauthorized error")
+        results = raw_results.json()
         if print_json:
             print(json.dumps(results, indent=4, sort_keys=True))
         return results
