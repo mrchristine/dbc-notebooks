@@ -207,8 +207,21 @@ class WorkspaceClient:
 
 if __name__ == '__main__':
     debug = False
-    parser = argparse.ArgumentParser(description='Sync Databricks workspace to/from local directory for git support. '
-                                                 'e.g. --users=\'mwc@databricks.com\'')
+    parser = argparse.ArgumentParser(description="""
+    Sync Databricks workspace to/from local directory for git support.
+    e.g.
+    $ python workspaces.py pull demo/reddit/
+    $ python workspaces.py push demo/reddit/
+    Or
+    $ python workspaces.py pull --host='https://myenv.cloud.databricks.com/ --user=mwc@databricks.com --password=HAHAHA
+    I personally use the environment variables to store this information
+    DBC_HOST
+    DBC_USERNAME
+    DBC_PASSWORD
+    DBC_SHARED
+    DBC_SHARED is set to true if the single repo needs to host multiple home directories.
+    It creates a local directory from the users e-mail
+    """)
     # subparser for mutually exclusive arguments
     sp = parser.add_subparsers(dest='action')
     sp_push = sp.add_parser('push', help='Push path to Databricks workspace')
