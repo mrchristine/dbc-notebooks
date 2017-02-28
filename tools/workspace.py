@@ -44,7 +44,7 @@ class WorkspaceClient:
             print("Must have a payload in json_args param.")
             return {}
         if print_json:
-            print json.dumps(results, indent=4, sort_keys=True)
+            print(json.dumps(results, indent=4, sort_keys=True))
         # if results are empty, let's return the return status
         if results:
             results['http_status_code'] = raw_results.status_code
@@ -98,19 +98,19 @@ class WorkspaceClient:
         """ Recursively list all notebooks within the folder"""
         get_args = {'path': fullpath}
         items = self.get(WS_LIST, get_args)['entities']
-        folders = map(lambda y: y.get('path', None),
-                      filter(lambda x: x.get('entityType', None) == 'Folder', items))
-        notebooks = map(lambda y: y.get('path', None),
-                        filter(lambda x: x.get('entityType', None) == 'Notebook', items))
-        print 'Folders: ' + str(folders)
-        print 'Notebooks: ' + str(notebooks)
+        folders = list(map(lambda y: y.get('path', None),
+                      filter(lambda x: x.get('entityType', None) == 'Folder', items)))
+        notebooks = list(map(lambda y: y.get('path', None),
+                        filter(lambda x: x.get('entityType', None) == 'Notebook', items)))
+        print('Folders: ' + str(folders))
+        print('Notebooks: ' + str(notebooks))
         if folders == [] and notebooks == []:
             raise ValueError('Folder does not contain any notebooks')
         # save the notebooks with the current method
         if notebooks:
             map(lambda y: self.save_single_notebook(y), notebooks)
         if folders:
-            nested_list_notebooks = map(lambda y: self.get_all_notebooks(y), folders)
+            nested_list_notebooks = list(map(lambda y: self.get_all_notebooks(y), folders))
             flatten_list = [item for sublist in nested_list_notebooks for item in sublist]
             return notebooks + flatten_list
         return notebooks
@@ -174,7 +174,7 @@ class WorkspaceClient:
         folder_resp = self.post(WS_MKDIRS, {'path': dirname}, False)
         # import the notebook
         resp = self.post(WS_IMPORT, create_notebook, False)
-        print "Push Notebook: " + dbc_path
+        print("Push Notebook: " + dbc_path)
         print(resp)
 
     @staticmethod
@@ -191,7 +191,7 @@ class WorkspaceClient:
         """ Find all source files first, grab all the folders, batch create folders, push notebooks"""
         file_list = self.find_all_file_paths(local_path)
         cwd = os.getcwd()
-        file_list_rel_path = map(lambda x: x.replace(cwd, "."), file_list)
+        file_list_rel_path = list(map(lambda x: x.replace(cwd, "."), file_list))
         for fname in file_list_rel_path:
             self.push_file(fname)
         return file_list_rel_path
