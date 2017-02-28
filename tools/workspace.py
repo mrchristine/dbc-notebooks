@@ -17,11 +17,12 @@ WS_EXPORT = "/workspace/export"
 class WorkspaceClient:
     """A class to define wrappers for the REST API"""
 
-    def __init__(self, host="https://myenv.cloud.databricks.com", user="admin", pwd="fakePassword"):
+    def __init__(self, host="https://myenv.cloud.databricks.com", user="admin", pwd="fakePassword", is_shared=False):
         self.user = user
         self.pwd = pwd
         self.creds = (user, pwd)
         self.host = host
+        self.is_shared = is_shared
         self.url = host.rstrip('/') + '/api/2.0'
 
     def get(self, endpoint, json_params={}, print_json=False):
@@ -70,6 +71,9 @@ class WorkspaceClient:
         elif path[0] == '.':
             full_path = '/Users/' + self.user.strip() + path[1:]
             return full_path
+        elif str.isalnum(path[0]):
+            full_path = '/Users/' + self.user.strip() + '/' + path
+            return full_path
         else:
             raise ValueError('Path should start with . for relative paths or / for absolute.')
 
@@ -80,6 +84,8 @@ class WorkspaceClient:
         # grab the relative path from the constructed full path
         # this code chops of the /Users/mwc@example.com/ to create a local reference
         save_filename = '/'.join(fullpath.split('/')[3:]) + '.' + resp['fileType']
+        if self.is_shared:
+            save_filename = self.user.split("@")[0] + '/' + save_filename
         save_path = os.path.dirname(save_filename)
         print("Saving file in local path: " + save_filename)
         # If the local path doesn't exist,we create it before we save the contents
@@ -87,19 +93,6 @@ class WorkspaceClient:
             os.makedirs(save_path)
         with open(save_filename, "w") as f:
             f.write(base64.b64decode(resp['content']))
-
-    @staticmethod
-    def find_relative_path(self, folder, fullpath):
-        """ Split the full path to find the folder index to create a local dir
-        e.g. /Users/mwc@databricks.com/demo/reddit/
-        output: demo/reddit/
-        Should check that the folder is a workspace folder"""
-        path_array = fullpath.split('/')
-        folder_indx = path_array.index(folder)
-        rel_path = '/'.join(path_array[:folder_indx][3:])
-        if not rel_path:
-            return './'
-        return rel_path + '/'
 
     def get_all_notebooks(self, fullpath):
         """ Recursively list all notebooks within the folder"""
@@ -162,7 +155,11 @@ class WorkspaceClient:
         """Push a single file to DBC
           This assumes the local path matches the Databricks workspace"""
         # get the databricks path using the users hostname
-        tmp_path = '/Users/' + self.user.strip() + '/' + local_path.lstrip('./')
+        if self.is_shared:
+            username = self.user.split('@')[0]
+            tmp_path = '/Users/' + self.user.strip() + '/' + local_path.lstrip('./').replace(username + '/', "")
+        else:
+            tmp_path = '/Users/' + self.user.strip() + '/' + local_path.lstrip('./')
         overwrite = True
         dirname = os.path.dirname(tmp_path)
         dbc_path, file_ext = os.path.splitext(tmp_path)
@@ -234,7 +231,6 @@ if __name__ == '__main__':
     host = args.host
     password = args.password
     is_shared = args.shared
-    print(args)
     if not host:
         host = os.environ.get('DBC_HOST')
     if not user:
@@ -243,7 +239,7 @@ if __name__ == '__main__':
         password = os.environ.get('DBC_PASSWORD')
     if not is_shared:
         is_shared = bool(os.environ.get('DBC_SHARED'))
-    helper = WorkspaceClient(host, user, password)
+    helper = WorkspaceClient(host, user, password, is_shared)
 
     if debug:
         print("ACTION IS: " + args.action)
