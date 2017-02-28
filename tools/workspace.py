@@ -68,7 +68,7 @@ class WorkspaceClient:
             # return path is absolute so return here
             return path
         elif path[0] == '.':
-            full_path = '/Users/' + self.user.strip() + '/' + path[1:]
+            full_path = '/Users/' + self.user.strip() + path[1:]
             return full_path
         else:
             raise ValueError('Path should start with . for relative paths or / for absolute.')
