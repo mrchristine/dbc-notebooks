@@ -52,6 +52,14 @@ class WorkspaceClient:
         else:
             return {'http_status_code': raw_results.status_code}
 
+    @staticmethod
+    def my_map(F, items):
+        to_return = []
+        for elem in items:
+            to_return.append(F(elem))
+        return to_return
+
+
     def is_file(self, path):
         """ Checks if the file is a notebook or folder in Databricks"""
         status = {'path': path}
@@ -91,16 +99,16 @@ class WorkspaceClient:
         # If the local path doesn't exist,we create it before we save the contents
         if not os.path.exists(save_path):
             os.makedirs(save_path)
-        with open(save_filename, "w") as f:
+        with open(save_filename, "wb") as f:
             f.write(base64.b64decode(resp['content']))
 
     def get_all_notebooks(self, fullpath):
         """ Recursively list all notebooks within the folder"""
         get_args = {'path': fullpath}
         items = self.get(WS_LIST, get_args)['entities']
-        folders = list(map(lambda y: y.get('path', None),
+        folders = list(self.my_map(lambda y: y.get('path', None),
                       filter(lambda x: x.get('entityType', None) == 'Folder', items)))
-        notebooks = list(map(lambda y: y.get('path', None),
+        notebooks = list(self.my_map(lambda y: y.get('path', None),
                         filter(lambda x: x.get('entityType', None) == 'Notebook', items)))
         print('Folders: ' + str(folders))
         print('Notebooks: ' + str(notebooks))
@@ -108,9 +116,9 @@ class WorkspaceClient:
             raise ValueError('Folder does not contain any notebooks')
         # save the notebooks with the current method
         if notebooks:
-            map(lambda y: self.save_single_notebook(y), notebooks)
+            self.my_map(lambda y: self.save_single_notebook(y), notebooks)
         if folders:
-            nested_list_notebooks = list(map(lambda y: self.get_all_notebooks(y), folders))
+            nested_list_notebooks = list(self.my_map(lambda y: self.get_all_notebooks(y), folders))
             flatten_list = [item for sublist in nested_list_notebooks for item in sublist]
             return notebooks + flatten_list
         return notebooks
@@ -191,7 +199,7 @@ class WorkspaceClient:
         """ Find all source files first, grab all the folders, batch create folders, push notebooks"""
         file_list = self.find_all_file_paths(local_path)
         cwd = os.getcwd()
-        file_list_rel_path = list(map(lambda x: x.replace(cwd, "."), file_list))
+        file_list_rel_path = list(self.my_map(lambda x: x.replace(cwd, "."), file_list))
         for fname in file_list_rel_path:
             self.push_file(fname)
         return file_list_rel_path
