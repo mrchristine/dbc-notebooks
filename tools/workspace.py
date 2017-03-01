@@ -187,9 +187,10 @@ class WorkspaceClient:
         dirname = os.path.dirname(tmp_path)
         dbc_path, file_ext = os.path.splitext(tmp_path)
         data = open(local_path, 'r').read()
+        #json.dumps(data.decode("utf-8"))
         create_notebook = {
            "path": dbc_path,
-           "content": base64.b64encode(data),
+           "content": base64.b64encode(data.encode('utf-8')).decode(),
            "overwrite": overwrite
         }
         create_notebook.update(self._parse_extension(local_path))
