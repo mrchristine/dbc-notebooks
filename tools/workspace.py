@@ -84,9 +84,10 @@ class WorkspaceClient:
             return False
         return True
 
-    def get_full_path(self, path):
+    def get_full_path(self, in_path):
         """ Get the full path of the Databricks workspace
          User's can provide the relative path to push / pull from Databricks"""
+        path = in_path.lstrip('[\"\']').rstrip('[\"\']')
         if path[0] == '/':
             # return path is absolute so return here
             return path
