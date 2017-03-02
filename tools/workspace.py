@@ -110,9 +110,10 @@ class WorkspaceClient:
         if self.is_shared:
             save_filename = self.user.split("@")[0] + '/' + save_filename
         save_path = os.path.dirname(save_filename)
+        print("Local path to save: " + save_path)
         print("Saving file in local path: " + save_filename)
         # If the local path doesn't exist,we create it before we save the contents
-        if not os.path.exists(save_path):
+        if not os.path.exists(save_path) and save_path:
             os.makedirs(save_path)
         with open(save_filename, "wb") as f:
             f.write(base64.b64decode(resp['content']))
@@ -128,7 +129,8 @@ class WorkspaceClient:
         print('Folders: ' + str(folders))
         print('Notebooks: ' + str(notebooks))
         if folders == [] and notebooks == []:
-            raise ValueError('Folder does not contain any notebooks')
+            print('Folder does not contain any notebooks')
+            return []
         # save the notebooks with the current method
         if notebooks:
             self.my_map(lambda y: self.save_single_notebook(y), notebooks)
@@ -187,7 +189,6 @@ class WorkspaceClient:
         dirname = os.path.dirname(tmp_path)
         dbc_path, file_ext = os.path.splitext(tmp_path)
         data = open(local_path, 'r').read()
-        #json.dumps(data.decode("utf-8"))
         create_notebook = {
            "path": dbc_path,
            "content": base64.b64encode(data.encode('utf-8')).decode(),
