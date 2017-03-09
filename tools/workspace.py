@@ -80,7 +80,7 @@ class WorkspaceClient:
         resp = self.get(WS_STATUS, json_params=status)
         print("Is the path a file or folder: ")
         print(resp)
-        if resp['status']['entityType'] == 'Folder':
+        if resp['object_type'] == 'DIRECTORY':
             return False
         return True
 
@@ -106,7 +106,7 @@ class WorkspaceClient:
         resp = self.get(WS_EXPORT, get_args)
         # grab the relative path from the constructed full path
         # this code chops of the /Users/mwc@example.com/ to create a local reference
-        save_filename = '/'.join(fullpath.split('/')[3:]) + '.' + resp['fileType']
+        save_filename = '/'.join(fullpath.split('/')[3:]) + '.' + resp['file_type']
         if self.is_shared:
             save_filename = self.user.split("@")[0] + '/' + save_filename
         save_path = os.path.dirname(save_filename)
@@ -121,13 +121,13 @@ class WorkspaceClient:
     def get_all_notebooks(self, fullpath):
         """ Recursively list all notebooks within the folder"""
         get_args = {'path': fullpath}
-        items = self.get(WS_LIST, get_args)['entities']
+        items = self.get(WS_LIST, get_args)['objects']
         folders = list(self.my_map(lambda y: y.get('path', None),
-                      filter(lambda x: x.get('entityType', None) == 'Folder', items)))
+                      filter(lambda x: x.get('object_type', None) == 'DIRECTORY', items)))
         notebooks = list(self.my_map(lambda y: y.get('path', None),
-                        filter(lambda x: x.get('entityType', None) == 'Notebook', items)))
-        print('Folders: ' + str(folders))
-        print('Notebooks: ' + str(notebooks))
+                        filter(lambda x: x.get('object_type', None) == 'NOTEBOOK', items)))
+        print('DIRECTORIES: ' + str(folders))
+        print('NOTEBOOKS: ' + str(notebooks))
         if folders == [] and notebooks == []:
             print('Folder does not contain any notebooks')
             return []
@@ -161,9 +161,9 @@ class WorkspaceClient:
         supported = ['scala', 'py', 'r', 'sql']
         ext = src_path.split('.')[-1]
         if ext == 'scala':
-            return {'language': 'Scala'}
+            return {'language': 'SCALA'}
         elif ext == 'py':
-            return {'language': 'Python'}
+            return {'language': 'PYTHON'}
         elif ext == 'ipynb':
             return {'format': 'IPython'}
         elif ext == 'r':
