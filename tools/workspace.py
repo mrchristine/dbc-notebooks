@@ -1,4 +1,5 @@
 # Databricks notebook source
+
 import base64
 import argparse
 import json
@@ -92,11 +93,15 @@ class WorkspaceClient:
             # return path is absolute so return here
             return path
         elif path[0] == '.':
-            full_path = '/Users/' + self.user.strip() + path[1:]
-            return full_path
+            if self.is_shared:
+                return '/Shared' + path[1:]
+            else:
+                return '/Users/' + self.user.strip() + path[1:]
         elif str.isalnum(path[0]):
-            full_path = '/Users/' + self.user.strip() + '/' + path
-            return full_path
+            if self.is_shared:
+                return '/Shared/' + path
+            else:
+                full_path = '/Users/' + self.user.strip() + '/' + path
         else:
             raise ValueError('Path should start with . for relative paths or / for absolute.')
 
@@ -107,7 +112,7 @@ class WorkspaceClient:
         # grab the relative path from the constructed full path
         # this code chops of the /Users/mwc@example.com/ to create a local reference
         save_filename = '/'.join(fullpath.split('/')[3:]) + '.' + resp['file_type']
-        if self.is_shared:
+        if not self.is_shared:
             save_filename = self.user.split("@")[0] + '/' + save_filename
         save_path = os.path.dirname(save_filename)
         print("Local path to save: " + save_path)
@@ -123,9 +128,9 @@ class WorkspaceClient:
         get_args = {'path': fullpath}
         items = self.get(WS_LIST, get_args)['objects']
         folders = list(self.my_map(lambda y: y.get('path', None),
-                      filter(lambda x: x.get('object_type', None) == 'DIRECTORY', items)))
+                                   filter(lambda x: x.get('object_type', None) == 'DIRECTORY', items)))
         notebooks = list(self.my_map(lambda y: y.get('path', None),
-                        filter(lambda x: x.get('object_type', None) == 'NOTEBOOK', items)))
+                                     filter(lambda x: x.get('object_type', None) == 'NOTEBOOK', items)))
         print('DIRECTORIES: ' + str(folders))
         print('NOTEBOOKS: ' + str(notebooks))
         if folders == [] and notebooks == []:
@@ -181,8 +186,7 @@ class WorkspaceClient:
           This assumes the local path matches the Databricks workspace"""
         # get the databricks path using the users hostname
         if self.is_shared:
-            username = self.user.split('@')[0]
-            tmp_path = '/Users/' + self.user.strip() + '/' + local_path.lstrip('./').replace(username + '/', "")
+            tmp_path = '/Shared/' + local_path.lstrip('./')
         else:
             tmp_path = '/Users/' + self.user.strip() + '/' + local_path.lstrip('./')
         overwrite = True
@@ -190,9 +194,9 @@ class WorkspaceClient:
         dbc_path, file_ext = os.path.splitext(tmp_path)
         data = open(local_path, 'r').read()
         create_notebook = {
-           "path": dbc_path,
-           "content": base64.b64encode(data.encode('utf-8')).decode(),
-           "overwrite": overwrite
+            "path": dbc_path,
+            "content": base64.b64encode(data.encode('utf-8')).decode(),
+            "overwrite": overwrite
         }
         create_notebook.update(self._parse_extension(local_path))
         # create a folder, if exists then it succeeds as well
