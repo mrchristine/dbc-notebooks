@@ -165,7 +165,7 @@ class WorkspaceClient:
         elif ext == 'py':
             return {'language': 'PYTHON'}
         elif ext == 'ipynb':
-            return {'format': 'IPython'}
+            return {'format': 'JUPYTER'}
         elif ext == 'r':
             return {'language': 'R'}
         elif ext == 'sql':
