@@ -178,13 +178,15 @@ class WorkspaceClient:
             raise ValueError('Unsupported file format: %s. Supported formats are: ' % ext +
                              '[%s].' % ', '.join(supported))
 
-    def push_file(self, local_path):
+    def push_file(self, local_path, dst_folder = None):
         """Push a single file to DBC
           This assumes the local path matches the Databricks workspace"""
         # get the databricks path using the users hostname
         if self.is_shared:
             username = self.user.split('@')[0]
             tmp_path = '/Users/' + self.user.strip() + '/' + local_path.lstrip('./').replace(username + '/', "")
+        elif dst_folder:
+            tmp_path = '/Users/' + self.user.strip() + '/' + dst_folder.replace('/', '') + '/' + local_path.lstrip('./')
         else:
             tmp_path = '/Users/' + self.user.strip() + '/' + local_path.lstrip('./')
         overwrite = True
