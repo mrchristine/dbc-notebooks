@@ -1,4 +1,3 @@
-# Databricks notebook source
 import base64
 import argparse
 import json
@@ -78,6 +77,9 @@ class WorkspaceClient:
         """ Checks if the file is a notebook or folder in Databricks"""
         status = {'path': path}
         resp = self.get(WS_STATUS, json_params=status)
+        if resp.get('error_code', None):
+            print(resp)
+            raise NameError('File does not exist in Databricks workspace.')
         print("Is the path a file or folder: ")
         print(resp)
         if resp['object_type'] == 'DIRECTORY':
