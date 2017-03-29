@@ -106,6 +106,13 @@ class WorkspaceClient:
         """ Saves a single notebook from Databricks to the local directory"""
         get_args = {'path': fullpath}
         resp = self.get(WS_EXPORT, get_args)
+        if resp.get('error_code', None):
+            if to_skip:
+                print('\n\nSkipping file due to error :' + fullpath + '\n\n')
+                return
+            else:
+                print(resp)
+                raise NameError('File does not exist in Databricks workspace.')
         # grab the relative path from the constructed full path
         # this code chops of the /Users/mwc@example.com/ to create a local reference
         save_filename = '/'.join(fullpath.split('/')[3:]) + '.' + resp['file_type']
@@ -235,6 +242,7 @@ class WorkspaceClient:
 
 
 if __name__ == '__main__':
+    to_skip = False
     debug = False
     parser = argparse.ArgumentParser(description="""
     Sync Databricks workspace to/from local directory for git support.
@@ -263,6 +271,8 @@ if __name__ == '__main__':
     parser.add_argument('--shared', dest='shared', action='store_true',
                         help='Boolean to notify if this is a \
                         shared repo to add a username prefix to the directories')
+    parser.add_argument('--skip', dest='to_skip', action='store_true',
+                        help='Boolean to skip any errors or not')
 
     parser.add_argument('path', type=str,
                         help='The path/directory in Databricks or locally to sync')
@@ -273,6 +283,8 @@ if __name__ == '__main__':
     host = args.host
     password = args.password
     is_shared = args.shared
+    if args.to_skip:
+        to_skip = True
     if not host:
         host = os.environ.get('DBC_HOST')
     if not user:
